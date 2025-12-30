@@ -1,0 +1,86 @@
+synapse stdp:
+    state:
+        w real = 100.    @nest::weight   # Synaptic weight
+        pre_trace real = 0.
+        post_trace real = 0.
+        
+        dt_USE ms = 0 ms
+        decayU real = 0
+        h ms = 0 ms
+        u_decay real = 0
+        
+        # Modello veloce
+        t_last ms = 0 ms
+        x real = 1
+        u real = 0.5
+        
+        # Modello lento
+        t_last_USE ms = 0 ms
+        Use_TM real = 0.1
+
+    parameters:
+        d ms = 1 ms  @nest::delay   # Synaptic transmission delay
+        lambda real = .01
+        tau_tr_pre ms = 20 ms
+        tau_tr_post ms = 20 ms
+        alpha real = 1
+        mu_plus real = 1
+        mu_minus real = 1
+        Wmax real = 100.
+        Wmin real = 0.
+        
+        #w_ real = 1
+        Use_d_TM real = 0.2
+        Use_p_TM real = 0.8
+        
+        # Modello veloce
+        tau_rec ms = 800 ms
+        tau_fac ms = 0 ms
+        U real = 0.5
+        
+        # Modello lento
+        U_d real = 0.1
+        U_p real = 0.6
+        tau_exp_GB ms = 100000 ms
+
+    equations:
+        pre_trace' = -pre_trace / tau_tr_pre
+        post_trace' = -post_trace / tau_tr_post
+
+    input:
+        pre_spikes <- spike
+        rho_GB real <- continuous
+
+    output:
+        spike
+
+
+    onReceive(pre_spikes):
+        
+        
+        h = t - t_last
+        dt_USE = t - t_last_USE
+        
+        if dt_USE > 0.0 ms: 
+            decayU = exp (- dt_USE / tau_exp_GB )
+            #Use_TM = (Use_d_TM + rho_GB * (Use_p_TM - Use_d_TM)) + (Use_TM - (Use_d_TM + rho_GB * (Use_p_TM - Use_d_TM))) * decayU
+            Use_TM = U_d + (rho_GB * (U_p - U_d))
+            if Use_TM < 0.0:
+                Use_TM = 0.0
+            if Use_TM > 1.0:
+                Use_TM = 1.0
+            t_last_USE = t
+        
+        u_decay = (tau_fac == 0.0 ms) ? 0.0 : exp( -h /tau_fac )
+        u_pre real = Use_TM + (u - Use_TM) * u_decay
+        x_pre real = 1.0 - (1.0 - x) * exp( -h / tau_rec)
+        R real = u_pre * x_pre
+        
+        w_eff real = w * R
+        deliver_spike(w_eff, d)
+        
+        u = u_pre + Use_TM * (1.0 - u_pre)
+        x = x_pre * (1.0 - u_pre)
+        t_last = t
+
+
